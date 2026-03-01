@@ -2,308 +2,343 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>PLINK-OH TV SHOW</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-
+<title>Plink-Oh Educacional</title>
 <style>
-html,body{
+body{
 margin:0;
-padding:0;
-overflow:hidden;
-background:black;
-font-family:Arial;
+background:#000;
 color:#0ff;
+font-family:Arial;
+overflow:hidden;
 text-align:center;
 }
 
-.screen{
-position:absolute;
-top:0;
-left:0;
-width:100%;
-height:100%;
-display:flex;
-flex-direction:column;
-justify-content:center;
-align-items:center;
-}
-
 button{
-background:black;
+padding:20px 40px;
+font-size:22px;
+background:#111;
 color:#0ff;
 border:2px solid #0ff;
-padding:10px 20px;
-margin:8px;
-font-size:18px;
+border-radius:10px;
 cursor:pointer;
-box-shadow:0 0 10px #0ff;
+margin:20px;
+}
+
+.bigButton{
+display:block;
+width:400px;
+margin:30px auto;
+font-size:26px;
 }
 
 .hidden{display:none;}
 
-h1,h2{
-text-shadow:0 0 20px #0ff;
+#questionBox{
+font-size:28px;
+margin-top:40px;
+}
+
+.option{
+margin:15px;
+padding:15px;
+border:2px solid #0ff;
+cursor:pointer;
+}
+
+#timer{
+font-size:40px;
+color:#f0f;
+margin:20px;
+}
+
+canvas{
+background:#000;
+display:block;
+margin:auto;
+}
+
+#scoreboard{
+position:absolute;
+top:10px;
+right:10px;
+text-align:right;
 }
 </style>
 </head>
-
 <body>
 
-<!-- TELA A -->
-<div id="startScreen" class="screen">
-<h1>PLINK-OH TV SHOW</h1>
-<p>Importe os arquivos:</p>
-<input type="file" id="questionsFile" accept=".csv"><br><br>
-<input type="file" id="groupsFile" accept=".csv"><br><br>
+<div id="startScreen">
+<h1>PLINK-OH</h1>
+
+<label class="bigButton">
+Importar Grupos
+<input type="file" id="groupFile" hidden>
+</label>
+
+<label class="bigButton">
+Importar Perguntas
+<input type="file" id="questionFile" hidden>
+</label>
+
 <button onclick="startGame()">INICIAR JOGO</button>
 </div>
 
-<!-- TELA B -->
-<div id="questionScreen" class="screen hidden">
-<h2 id="teamName"></h2>
-<h3 id="playerName"></h3>
-<h2 id="questionText"></h2>
-<div id="answers"></div>
+<div id="questionScreen" class="hidden">
+<div id="currentInfo"></div>
 <div id="timer"></div>
+<div id="questionBox"></div>
+<div id="options"></div>
 </div>
 
-<!-- TELA C -->
-<div id="wrongScreen" class="screen hidden">
-<h1>RESPOSTA ERRADA</h1>
-<button onclick="nextRound()">Continuar</button>
+<div id="errorScreen" class="hidden">
+<h1>❌ ERROU!</h1>
+<button onclick="nextTurn()">Próximo Grupo</button>
 </div>
 
-<!-- TELA D -->
-<div id="boardScreen" class="screen hidden"></div>
+<div id="plinkoScreen" class="hidden">
+<h2>Use ← → para mover</h2>
+<h2>↓ para soltar</h2>
+<canvas id="gameCanvas"></canvas>
+</div>
+
+<div id="scoreboard"></div>
 
 <script>
-const {Engine,Render,Runner,Bodies,Composite,Events} = Matter;
-
-let questions=[];
-let groups=[];
-let order=[];
+let groups=[],questions=[];
 let currentGroupIndex=0;
-let currentQuestion=0;
-let multiplier=1;
+let groupOrder=[];
+let currentQuestion;
 let timerInterval;
+let multiplier=1;
+let selectedPlayer="";
+let canvas=document.getElementById("gameCanvas");
+let ctx=canvas.getContext("2d");
 
-let engine,world,render,runner;
-let slotValues=[100,200,300,500,300,200,100];
-let slotWidth;
+let ball=null;
+let pins=[];
+let slots=[100,200,300,400,500];
 
-/* ---------- LOAD FILES ---------- */
-
-function parseCSV(text){
-return text.trim().split("\n").map(l=>l.split(","));
+function resizeCanvas(){
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+createPins();
 }
-
-document.getElementById("questionsFile").addEventListener("change",function(e){
-let reader=new FileReader();
-reader.onload=function(ev){
-let data=parseCSV(ev.target.result);
-questions=data.map(p=>({
-question:p[0],
-correct:p[1],
-options:shuffle([p[1],p[2],p[3],p[4]]),
-multiplier:parseInt(p[5]),
-time:parseInt(p[6])
-}));
-};
-reader.readAsText(e.target.files[0]);
-});
-
-document.getElementById("groupsFile").addEventListener("change",function(e){
-let reader=new FileReader();
-reader.onload=function(ev){
-let data=parseCSV(ev.target.result);
-groups=data.map(row=>({
-name:row[0],
-members:row.slice(1),
-draws:{}
-}));
-};
-reader.readAsText(e.target.files[0]);
-});
-
-/* ---------- START ---------- */
-
-function startGame(){
-if(!questions.length||!groups.length){
-alert("Importe os dois arquivos!");
-return;
-}
-
-document.documentElement.requestFullscreen().catch(()=>{});
-
-order=shuffle([...Array(groups.length).keys()]);
-currentGroupIndex=0;
-
-showQuestionScreen();
-}
-
-/* ---------- QUESTION FLOW ---------- */
-
-function showQuestionScreen(){
-hideAll();
-
-let group=groups[order[currentGroupIndex]];
-let member=drawMember(group);
-
-multiplier=questions[currentQuestion].multiplier;
-
-document.getElementById("teamName").innerText="Grupo: "+group.name;
-document.getElementById("playerName").innerText="Responder: "+member;
-document.getElementById("questionText").innerText=
-"x"+multiplier+" - "+questions[currentQuestion].question;
-
-let div=document.getElementById("answers");
-div.innerHTML="";
-
-questions[currentQuestion].options.forEach(o=>{
-let b=document.createElement("button");
-b.innerText=o;
-b.onclick=()=>checkAnswer(o);
-div.appendChild(b);
-});
-
-startTimer(questions[currentQuestion].time);
-
-document.getElementById("questionScreen").classList.remove("hidden");
-}
-
-function checkAnswer(ans){
-clearInterval(timerInterval);
-
-if(ans===questions[currentQuestion].correct){
-showBoardScreen();
-}else{
-document.getElementById("wrongScreen").classList.remove("hidden");
-}
-}
-
-function nextRound(){
-nextTurn();
-showQuestionScreen();
-}
-
-/* ---------- TURN LOGIC ---------- */
-
-function nextTurn(){
-currentGroupIndex=(currentGroupIndex+1)%groups.length;
-currentQuestion++;
-if(currentQuestion>=questions.length){
-alert("Fim do jogo!");
-exitFullscreen();
-location.reload();
-}
-}
-
-/* ---------- MEMBER DRAW ---------- */
-
-function drawMember(group){
-
-let available=group.members.filter(m=>{
-return !group.draws[m]||group.draws[m]<2;
-});
-
-if(!available.length){
-group.draws={};
-available=group.members;
-}
-
-let chosen=available[Math.floor(Math.random()*available.length)];
-group.draws[chosen]=(group.draws[chosen]||0)+1;
-return chosen;
-}
-
-/* ---------- TIMER ---------- */
-
-function startTimer(sec){
-let t=sec;
-document.getElementById("timer").innerText="Tempo: "+t;
-timerInterval=setInterval(()=>{
-t--;
-document.getElementById("timer").innerText="Tempo: "+t;
-if(t<=0){
-clearInterval(timerInterval);
-document.getElementById("wrongScreen").classList.remove("hidden");
-}
-},1000);
-}
-
-/* ---------- BOARD ---------- */
-
-function showBoardScreen(){
-hideAll();
-document.getElementById("boardScreen").classList.remove("hidden");
-initBoard();
-}
-
-function initBoard(){
-engine=Engine.create();
-world=engine.world;
-
-render=Render.create({
-element:document.getElementById("boardScreen"),
-engine:engine,
-options:{
-width:window.innerWidth,
-height:window.innerHeight,
-wireframes:false,
-background:"black"
-}
-});
-
-Render.run(render);
-runner=Runner.create();
-Runner.run(runner,engine);
-
-slotWidth=window.innerWidth/slotValues.length;
-
-for(let y=window.innerHeight*0.2;y<window.innerHeight*0.8;y+=70){
-for(let x=80;x<window.innerWidth-80;x+=60){
-Composite.add(world,Bodies.circle(x,y,8,{isStatic:true,render:{fillStyle:"#0ff"}}));
-}
-}
-
-for(let i=0;i<slotValues.length;i++){
-Composite.add(world,Bodies.rectangle(i*slotWidth,window.innerHeight-80,10,160,{isStatic:true,render:{fillStyle:"#0ff"}}));
-}
-
-Composite.add(world,Bodies.rectangle(window.innerWidth/2,window.innerHeight-20,window.innerWidth,40,{isStatic:true}));
-
-document.addEventListener("click",dropBallOnce,{once:true});
-}
-
-function dropBallOnce(e){
-if(e.clientY>window.innerHeight*0.25)return;
-
-let ball=Bodies.circle(e.clientX,20,12,{restitution:0.7,render:{fillStyle:"#f0f"}});
-Composite.add(world,ball);
-
-Events.on(engine,"afterUpdate",function(){
-if(ball.position.y>window.innerHeight-100){
-let slot=Math.floor(ball.position.x/slotWidth);
-slot=Math.max(0,Math.min(slot,slotValues.length-1));
-let total=slotValues[slot]*multiplier;
-alert("Pontuação: "+total);
-Composite.remove(world,ball);
-nextTurn();
-showQuestionScreen();
-}
-});
-}
-
-/* ---------- UTIL ---------- */
-
-function hideAll(){
-document.querySelectorAll(".screen").forEach(s=>s.classList.add("hidden"));
-}
+window.onresize=resizeCanvas;
 
 function shuffle(a){
 return a.sort(()=>Math.random()-0.5);
 }
-</script>
 
+document.getElementById("groupFile").addEventListener("change",function(e){
+let reader=new FileReader();
+reader.onload=function(ev){
+let lines=ev.target.result.trim().split("\n").slice(1);
+groups=lines.map(l=>{
+let cols=l.split(",");
+return{
+name:cols[0],
+players:cols.slice(1).filter(x=>x),
+score:0,
+history:{}
+}
+});
+alert("Grupos carregados!");
+}
+reader.readAsText(e.target.files[0]);
+});
+
+document.getElementById("questionFile").addEventListener("change",function(e){
+let reader=new FileReader();
+reader.onload=function(ev){
+let lines=ev.target.result.trim().split("\n").slice(1);
+questions=lines.map(l=>{
+let c=l.split(",");
+return{
+question:c[0],
+correct:c[1],
+options:shuffle([c[1],c[2],c[3],c[4]]),
+mult:parseInt(c[5]),
+time:parseInt(c[6])
+}
+});
+alert("Perguntas carregadas!");
+}
+reader.readAsText(e.target.files[0]);
+});
+
+function startGame(){
+if(groups.length==0||questions.length==0){
+alert("Importe os dois arquivos!");
+return;
+}
+document.documentElement.requestFullscreen();
+groupOrder=shuffle([...groups.keys()]);
+document.getElementById("startScreen").classList.add("hidden");
+nextTurn();
+}
+
+function nextTurn(){
+document.getElementById("errorScreen").classList.add("hidden");
+document.getElementById("plinkoScreen").classList.add("hidden");
+
+let g=groups[groupOrder[currentGroupIndex]];
+currentGroupIndex=(currentGroupIndex+1)%groups.length;
+
+selectedPlayer=selectPlayer(g);
+
+currentQuestion=questions.shift();
+multiplier=currentQuestion.mult;
+
+showQuestion(g,currentQuestion);
+}
+
+function selectPlayer(group){
+let counts=group.history;
+let all=group.players;
+
+let available=all.filter(p=>(counts[p]||0)<2);
+if(available.length==0){
+group.history={};
+available=all;
+}
+
+let p=available[Math.floor(Math.random()*available.length)];
+counts[p]=(counts[p]||0)+1;
+return p;
+}
+
+function showQuestion(group,q){
+document.getElementById("questionScreen").classList.remove("hidden");
+document.getElementById("currentInfo").innerHTML=
+"<h2>"+group.name+" - "+selectedPlayer+"</h2>";
+
+document.getElementById("questionBox").innerText=q.question;
+
+let optDiv=document.getElementById("options");
+optDiv.innerHTML="";
+q.options.forEach(o=>{
+let d=document.createElement("div");
+d.className="option";
+d.innerText=o;
+d.onclick=()=>answer(o);
+optDiv.appendChild(d);
+});
+
+startTimer(q.time);
+}
+
+function startTimer(t){
+let time=t;
+document.getElementById("timer").innerText=time;
+timerInterval=setInterval(()=>{
+time--;
+document.getElementById("timer").innerText=time;
+if(time<=0){
+clearInterval(timerInterval);
+wrongAnswer();
+}
+},1000);
+}
+
+function answer(opt){
+clearInterval(timerInterval);
+if(opt==currentQuestion.correct){
+correctAnswer();
+}else{
+wrongAnswer();
+}
+}
+
+function wrongAnswer(){
+document.getElementById("questionScreen").classList.add("hidden");
+document.getElementById("errorScreen").classList.remove("hidden");
+}
+
+function correctAnswer(){
+document.getElementById("questionScreen").classList.add("hidden");
+startPlinko();
+}
+
+function startPlinko(){
+document.getElementById("plinkoScreen").classList.remove("hidden");
+resizeCanvas();
+ball={x:canvas.width/2,y:50,vy:0,r:12};
+draw();
+}
+
+function createPins(){
+pins=[];
+let rows=6;
+let spacing=80;
+for(let y=150;y<150+rows*spacing;y+=spacing){
+for(let x=100;x<canvas.width-100;x+=spacing){
+pins.push({x:x+(y/spacing%2?40:0),y});
+}
+}
+}
+
+document.addEventListener("keydown",function(e){
+if(!ball)return;
+if(e.key=="ArrowLeft")ball.x-=20;
+if(e.key=="ArrowRight")ball.x+=20;
+if(e.key=="ArrowDown")ball.vy=2;
+});
+
+function draw(){
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+pins.forEach(p=>{
+ctx.beginPath();
+ctx.arc(p.x,p.y,6,0,Math.PI*2);
+ctx.fillStyle="#0ff";
+ctx.fill();
+});
+
+slots.forEach((s,i)=>{
+let w=canvas.width/5;
+ctx.strokeRect(i*w,canvas.height-100,w,100);
+ctx.fillText(s,i*w+w/2,canvas.height-50);
+});
+
+if(ball){
+ball.vy+=0.3;
+ball.y+=ball.vy;
+
+pins.forEach(p=>{
+let dx=ball.x-p.x;
+let dy=ball.y-p.y;
+let dist=Math.sqrt(dx*dx+dy*dy);
+if(dist<ball.r+6){
+ball.vy*=-0.7;
+ball.x+=dx>0?10:-10;
+}
+});
+
+ctx.beginPath();
+ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
+ctx.fillStyle="#f0f";
+ctx.fill();
+
+if(ball.y>canvas.height-100){
+let slot=Math.floor(ball.x/(canvas.width/5));
+let points=slots[slot]*multiplier;
+groups[groupOrder[(currentGroupIndex-1+groups.length)%groups.length]].score+=points;
+updateScoreboard();
+ball=null;
+setTimeout(nextTurn,2000);
+}
+}
+
+requestAnimationFrame(draw);
+}
+
+function updateScoreboard(){
+let sb=document.getElementById("scoreboard");
+sb.innerHTML="<h3>PLACAR</h3>";
+groups.forEach(g=>{
+sb.innerHTML+=g.name+": "+g.score+"<br>";
+});
+}
+</script>
 </body>
 </html>
