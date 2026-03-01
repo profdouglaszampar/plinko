@@ -284,7 +284,7 @@ startPlinko();
 function startPlinko(){
 document.getElementById("plinkoScreen").classList.remove("hidden");
 resizeCanvas();
-ball={x:canvas.width/2,y:80,vy:0,r:12};
+ball={ x:canvas.width/2, y:80, vx:(Math.random()-0.5)*4, // leve desvio inicial vy:0, r:12 };
 }
 
 function resizeCanvas(){
@@ -330,16 +330,33 @@ ctx.fillText(s,i*w+w/2,canvas.height-60);
 });
 
 if(ball){
-ball.vy+=0.4;
-ball.y+=ball.vy;
+ball.vy+=0.35;
+
+ball.x += ball.vx || 0;
+ball.y += ball.vy;
+
+// leve atrito horizontal
+ball.vx *= 0.99;
 
 pins.forEach(p=>{
-let dx=ball.x-p.x;
-let dy=ball.y-p.y;
-let dist=Math.sqrt(dx*dx+dy*dy);
-if(dist<ball.r+6){
-ball.vy*=-0.7;
-ball.x+=dx>0?15:-15;
+let dx=ball.x - p.x;
+let dy = ball.y - p.y;
+let dist = Math.sqrt(dx*dx + dy*dy);
+
+if(dist < ball.r + 6){
+
+    // Normalização do vetor de colisão
+    let nx = dx / dist;
+    let ny = dy / dist;
+
+    // Reflexão realista
+    let dot = ball.vy * ny; 
+
+    ball.vy = -ball.vy * 0.8;
+
+    // Adiciona desvio lateral baseado no impacto
+    ball.vx = (ball.vx || 0) + nx * 4;
+
 }
 });
 
