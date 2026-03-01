@@ -2,116 +2,223 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Plink-Oh Game</title>
+<title>Plink-Oh Pro</title>
 <style>
-body {
-  font-family: Arial;
-  text-align: center;
-  background: #f4f4f4;
-}
-
-#board {
-  margin-top: 30px;
-}
-
-.peg {
-  width: 10px;
-  height: 10px;
-  background: #333;
-  border-radius: 50%;
-  display: inline-block;
-  margin: 8px;
-}
-
-.slot {
-  width: 80px;
-  height: 40px;
-  background: #4CAF50;
-  display: inline-block;
-  margin: 5px;
-  color: white;
-  line-height: 40px;
-  font-weight: bold;
-}
-
-button {
-  padding: 10px 20px;
-  margin: 10px;
-}
+body { font-family: Arial; text-align:center; background:#111; color:white; }
+#gameArea { display:none; }
+canvas { background:#222; margin-top:20px; border-radius:10px; }
+button { padding:10px 20px; margin:5px; font-size:16px; }
+#scoreboard { margin-top:15px; }
+.teamBox { display:inline-block; margin:10px; padding:10px; background:#333; border-radius:8px; }
+#timer { font-size:24px; margin:10px; color:yellow; }
+#result { font-size:20px; margin-top:10px; color:lightgreen; }
 </style>
 </head>
 <body>
 
 <h1>Plink-Oh Quiz</h1>
 
+<div id="setup">
+<label>How many teams?</label>
+<input type="number" id="teamCount" min="1" max="10" value="2">
+<br><br>
 <input type="file" id="fileInput" accept=".csv">
-<div id="game" style="display:none;">
-  <h2 id="question"></h2>
-  <div id="answers"></div>
-  <div id="result"></div>
-  <button onclick="nextQuestion()">Next</button>
+</div>
+
+<div id="gameArea">
+<h2 id="question"></h2>
+<div id="timer"></div>
+<div id="answers"></div>
+<canvas id="board" width="500" height="600"></canvas>
+<div id="result"></div>
+<div id="scoreboard"></div>
+<button onclick="nextQuestion()">Next Question</button>
 </div>
 
 <script>
-let questions = [];
-let current = 0;
+let questions=[];
+let current=0;
+let teams=[];
+let currentTeam=0;
+let timerInterval;
+let earnedMultiplier=1;
 
-document.getElementById('fileInput').addEventListener('change', function(e) {
-  const file = e.target.files[0];
-  const reader = new FileReader();
-  reader.onload = function(event) {
-    const lines = event.target.result.split("\n");
-    questions = lines.map(line => {
-      const parts = line.split(",");
-      return {
-        question: parts[0],
-        correct: parts[1],
-        options: shuffle([parts[1], parts[2], parts[3], parts[4]])
-      };
-    });
-    document.getElementById("game").style.display = "block";
-    showQuestion();
-  };
-  reader.readAsText(file);
+const slotValues=[100,200,300,500,300,200,100];
+const canvas=document.getElementById("board");
+const ctx=canvas.getContext("2d");
+
+document.getElementById("fileInput").addEventListener("change",function(e){
+
+ const teamCount=parseInt(document.getElementById("teamCount").value);
+ teams=[];
+ for(let i=0;i<teamCount;i++){
+   teams.push({name:"Team "+(i+1),score:0});
+ }
+
+ const file=e.target.files[0];
+ const reader=new FileReader();
+ reader.onload=function(event){
+   const lines=event.target.result.trim().split("\n");
+   questions=lines.map(line=>{
+     const p=line.split(",");
+     return {
+       question:p[0],
+       correct:p[1],
+       options:shuffle([p[1],p[2],p[3],p[4]]),
+       multiplier:parseInt(p[5]),
+       time:parseInt(p[6])
+     };
+   });
+   document.getElementById("setup").style.display="none";
+   document.getElementById("gameArea").style.display="block";
+   updateScoreboard();
+   showQuestion();
+ };
+ reader.readAsText(file);
 });
 
-function showQuestion() {
-  let q = questions[current];
-  document.getElementById("question").innerText = q.question;
-  let answersDiv = document.getElementById("answers");
-  answersDiv.innerHTML = "";
-
-  q.options.forEach(option => {
-    let btn = document.createElement("button");
-    btn.innerText = option;
-    btn.onclick = () => checkAnswer(option);
-    answersDiv.appendChild(btn);
-  });
+function showQuestion(){
+ let q=questions[current];
+ document.getElementById("question").innerText=
+  teams[currentTeam].name+" | Multiplier x"+q.multiplier+" | "+q.question;
+ showAnswers(q);
+ startTimer(q.time);
 }
 
-function checkAnswer(answer) {
-  let correct = questions[current].correct;
-  if (answer === correct) {
-    document.getElementById("result").innerText = "Correct!";
-  } else {
-    document.getElementById("result").innerText = "Wrong! Correct answer: " + correct;
-  }
+function showAnswers(q){
+ let div=document.getElementById("answers");
+ div.innerHTML="";
+ q.options.forEach(opt=>{
+   let b=document.createElement("button");
+   b.innerText=opt;
+   b.onclick=()=>checkAnswer(opt);
+   div.appendChild(b);
+ });
 }
 
-function nextQuestion() {
-  current++;
-  if (current < questions.length) {
-    showQuestion();
-    document.getElementById("result").innerText = "";
-  } else {
-    document.getElementById("question").innerText = "Game Over!";
-    document.getElementById("answers").innerHTML = "";
-  }
+function checkAnswer(ans){
+ clearInterval(timerInterval);
+ let q=questions[current];
+ if(ans===q.correct){
+   earnedMultiplier=q.multiplier;
+   dropBallAnimation();
+ }else{
+   alert("Wrong!");
+   nextTurn();
+ }
 }
 
-function shuffle(array) {
-  return array.sort(() => Math.random() - 0.5);
+function startTimer(seconds){
+ let timeLeft=seconds;
+ document.getElementById("timer").innerText="Time: "+timeLeft;
+ timerInterval=setInterval(()=>{
+   timeLeft--;
+   document.getElementById("timer").innerText="Time: "+timeLeft;
+   if(timeLeft<=0){
+     clearInterval(timerInterval);
+     alert("Time's up!");
+     nextTurn();
+   }
+ },1000);
 }
+
+function nextTurn(){
+ currentTeam=(currentTeam+1)%teams.length;
+ showQuestion();
+}
+
+function nextQuestion(){
+ current++;
+ if(current<questions.length){
+   showQuestion();
+ }else{
+   alert("Game Over!");
+ }
+}
+
+function updateScoreboard(){
+ let board=document.getElementById("scoreboard");
+ board.innerHTML="";
+ teams.forEach(t=>{
+   board.innerHTML+=
+   `<div class="teamBox">${t.name}<br>${t.score}</div>`;
+ });
+}
+
+function shuffle(a){
+ return a.sort(()=>Math.random()-0.5);
+}
+
+/* ===== PLINK BOARD ===== */
+
+function drawBoard(){
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ // pegs
+ for(let y=80;y<500;y+=60){
+   for(let x=60;x<460;x+=60){
+     ctx.beginPath();
+     ctx.arc(x,y,6,0,Math.PI*2);
+     ctx.fillStyle="white";
+     ctx.fill();
+   }
+ }
+
+ // slots
+ const slotWidth=canvas.width/slotValues.length;
+ for(let i=0;i<slotValues.length;i++){
+   ctx.fillStyle="#4CAF50";
+   ctx.fillRect(i*slotWidth,550,slotWidth,50);
+   ctx.fillStyle="white";
+   ctx.fillText(slotValues[i],i*slotWidth+slotWidth/2-15,580);
+ }
+}
+
+function dropBallAnimation(){
+ let x=250;
+ let y=20;
+ let speed=4;
+
+ let interval=setInterval(()=>{
+   ctx.clearRect(0,0,canvas.width,canvas.height);
+   drawBoard();
+
+   ctx.beginPath();
+   ctx.arc(x,y,10,0,Math.PI*2);
+   ctx.fillStyle="red";
+   ctx.fill();
+
+   y+=speed;
+   x+=Math.random()*20-10;
+
+   if(y>=540){
+     clearInterval(interval);
+     calculateScore(x);
+   }
+ },20);
+}
+
+function calculateScore(x){
+ const slotWidth=canvas.width/slotValues.length;
+ let slotIndex=Math.floor(x/slotWidth);
+ if(slotIndex<0) slotIndex=0;
+ if(slotIndex>=slotValues.length) slotIndex=slotValues.length-1;
+
+ let slotScore=slotValues[slotIndex];
+ let total=slotScore*earnedMultiplier;
+
+ teams[currentTeam].score+=total;
+
+ document.getElementById("result").innerText=
+   "Slot: "+slotScore+
+   " | Multiplier: x"+earnedMultiplier+
+   " | Earned: "+total;
+
+ updateScoreboard();
+ nextTurn();
+}
+
+drawBoard();
 </script>
 
 </body>
