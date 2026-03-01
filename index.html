@@ -2,358 +2,306 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>PLINK-OH NEON PRO</title>
-
+<title>PLINK-OH TV SHOW</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 
 <style>
-html, body{
-  margin:0;
-  padding:0;
-  overflow:hidden;
-  background:black;
-  font-family:Arial, sans-serif;
-  color:#0ff;
-  text-align:center;
+html,body{
+margin:0;
+padding:0;
+overflow:hidden;
+background:black;
+font-family:Arial;
+color:#0ff;
+text-align:center;
 }
 
-h1{
-  text-shadow:0 0 20px #0ff;
-}
-
-#ui{
-  position:absolute;
-  top:10px;
-  width:100%;
-  z-index:10;
+.screen{
+position:absolute;
+top:0;
+left:0;
+width:100%;
+height:100%;
+display:flex;
+flex-direction:column;
+justify-content:center;
+align-items:center;
 }
 
 button{
-  background:black;
-  color:#0ff;
-  border:2px solid #0ff;
-  padding:8px 18px;
-  margin:5px;
-  font-size:16px;
-  cursor:pointer;
-  box-shadow:0 0 10px #0ff;
+background:black;
+color:#0ff;
+border:2px solid #0ff;
+padding:10px 20px;
+margin:8px;
+font-size:18px;
+cursor:pointer;
+box-shadow:0 0 10px #0ff;
 }
 
-#answers button{
-  display:block;
-  margin:8px auto;
-}
+.hidden{display:none;}
 
-.team{
-  display:inline-block;
-  margin:5px;
-  padding:8px;
-  border:2px solid #0ff;
-  box-shadow:0 0 10px #0ff;
-}
-
-#ranking{
-  position:absolute;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  background:black;
-  display:none;
-  justify-content:center;
-  align-items:center;
-  flex-direction:column;
-  font-size:28px;
-  z-index:20;
+h1,h2{
+text-shadow:0 0 20px #0ff;
 }
 </style>
 </head>
 
 <body>
 
-<div id="ui">
-  <h1>PLINK-OH NEON</h1>
-
-  <div id="setup">
-    Teams:
-    <input type="number" id="teamCount" value="2" min="1" max="8">
-    <br><br>
-    <input type="file" id="fileInput" accept=".csv">
-  </div>
-
-  <div id="game" style="display:none;">
-    <h2 id="question"></h2>
-    <div id="timer"></div>
-    <div id="answers"></div>
-    <div id="scoreboard"></div>
-    <button onclick="nextQuestion()">Next Question</button>
-  </div>
+<!-- TELA A -->
+<div id="startScreen" class="screen">
+<h1>PLINK-OH TV SHOW</h1>
+<p>Importe os arquivos:</p>
+<input type="file" id="questionsFile" accept=".csv"><br><br>
+<input type="file" id="groupsFile" accept=".csv"><br><br>
+<button onclick="startGame()">INICIAR JOGO</button>
 </div>
 
-<div id="ranking"></div>
+<!-- TELA B -->
+<div id="questionScreen" class="screen hidden">
+<h2 id="teamName"></h2>
+<h3 id="playerName"></h3>
+<h2 id="questionText"></h2>
+<div id="answers"></div>
+<div id="timer"></div>
+</div>
+
+<!-- TELA C -->
+<div id="wrongScreen" class="screen hidden">
+<h1>RESPOSTA ERRADA</h1>
+<button onclick="nextRound()">Continuar</button>
+</div>
+
+<!-- TELA D -->
+<div id="boardScreen" class="screen hidden"></div>
 
 <script>
-const {Engine, Render, Runner, Bodies, Composite, Events} = Matter;
+const {Engine,Render,Runner,Bodies,Composite,Events} = Matter;
 
-let engine, world, render, runner;
+let questions=[];
+let groups=[];
+let order=[];
+let currentGroupIndex=0;
+let currentQuestion=0;
+let multiplier=1;
+let timerInterval;
+
+let engine,world,render,runner;
 let slotValues=[100,200,300,500,300,200,100];
 let slotWidth;
 
-let questions=[], current=0;
-let teams=[], currentTeam=0;
-let multiplier=1;
-let timerInterval;
-let ballReady=false;
+/* ---------- LOAD FILES ---------- */
 
-/* ---------------- INIT ---------------- */
-
-function initEngine(){
-  engine=Engine.create();
-  world=engine.world;
-
-  render=Render.create({
-    element:document.body,
-    engine:engine,
-    options:{
-      width:window.innerWidth,
-      height:window.innerHeight,
-      wireframes:false,
-      background:"black"
-    }
-  });
-
-  Render.run(render);
-  runner=Runner.create();
-  Runner.run(runner,engine);
-
-  slotWidth=window.innerWidth/slotValues.length;
-  createBoard();
+function parseCSV(text){
+return text.trim().split("\n").map(l=>l.split(","));
 }
 
-function createBoard(){
-  Composite.clear(world);
-
-  let w=window.innerWidth;
-  let h=window.innerHeight;
-
-  // Pegs
-  for(let y=h*0.2;y<h*0.8;y+=70){
-    for(let x=80;x<w-80;x+=60){
-      let peg=Bodies.circle(x,y,8,{
-        isStatic:true,
-        render:{fillStyle:"#0ff"}
-      });
-      Composite.add(world,peg);
-    }
-  }
-
-  // Slot walls
-  for(let i=0;i<slotValues.length;i++){
-    let wall=Bodies.rectangle(i*slotWidth,h-80,10,160,{
-      isStatic:true,
-      render:{fillStyle:"#0ff"}
-    });
-    Composite.add(world,wall);
-  }
-
-  // Ground
-  let ground=Bodies.rectangle(w/2,h-20,w,40,{
-    isStatic:true,
-    render:{fillStyle:"#0ff"}
-  });
-
-  Composite.add(world,ground);
-}
-
-window.addEventListener("resize",()=>location.reload());
-
-initEngine();
-
-/* ---------------- FILE LOAD ---------------- */
-
-document.getElementById("fileInput").addEventListener("change",function(e){
-
-  document.documentElement.requestFullscreen();
-
-  let teamCount=parseInt(document.getElementById("teamCount").value);
-  teams=[];
-  for(let i=0;i<teamCount;i++){
-    teams.push({name:"Team "+(i+1),score:0});
-  }
-
-  let file=e.target.files[0];
-  let reader=new FileReader();
-
-  reader.onload=function(ev){
-    let lines=ev.target.result.trim().split("\n");
-
-    questions=lines.map(l=>{
-      let p=l.split(",");
-      return{
-        question:p[0],
-        correct:p[1],
-        options:shuffle([p[1],p[2],p[3],p[4]]),
-        multiplier:parseInt(p[5]),
-        time:parseInt(p[6])
-      }
-    });
-
-    document.getElementById("setup").style.display="none";
-    document.getElementById("game").style.display="block";
-
-    updateScoreboard();
-    showQuestion();
-  };
-
-  reader.readAsText(file);
+document.getElementById("questionsFile").addEventListener("change",function(e){
+let reader=new FileReader();
+reader.onload=function(ev){
+let data=parseCSV(ev.target.result);
+questions=data.map(p=>({
+question:p[0],
+correct:p[1],
+options:shuffle([p[1],p[2],p[3],p[4]]),
+multiplier:parseInt(p[5]),
+time:parseInt(p[6])
+}));
+};
+reader.readAsText(e.target.files[0]);
 });
 
-/* ---------------- QUESTIONS ---------------- */
+document.getElementById("groupsFile").addEventListener("change",function(e){
+let reader=new FileReader();
+reader.onload=function(ev){
+let data=parseCSV(ev.target.result);
+groups=data.map(row=>({
+name:row[0],
+members:row.slice(1),
+draws:{}
+}));
+};
+reader.readAsText(e.target.files[0]);
+});
 
-function showQuestion(){
-  let q=questions[current];
-  multiplier=q.multiplier;
+/* ---------- START ---------- */
 
-  document.getElementById("question").innerText=
-   teams[currentTeam].name+" | x"+multiplier+" | "+q.question;
+function startGame(){
+if(!questions.length||!groups.length){
+alert("Importe os dois arquivos!");
+return;
+}
 
-  let div=document.getElementById("answers");
-  div.innerHTML="";
+document.documentElement.requestFullscreen().catch(()=>{});
 
-  q.options.forEach(o=>{
-    let b=document.createElement("button");
-    b.innerText=o;
-    b.onclick=()=>checkAnswer(o);
-    div.appendChild(b);
-  });
+order=shuffle([...Array(groups.length).keys()]);
+currentGroupIndex=0;
 
-  startTimer(q.time);
+showQuestionScreen();
+}
+
+/* ---------- QUESTION FLOW ---------- */
+
+function showQuestionScreen(){
+hideAll();
+
+let group=groups[order[currentGroupIndex]];
+let member=drawMember(group);
+
+multiplier=questions[currentQuestion].multiplier;
+
+document.getElementById("teamName").innerText="Grupo: "+group.name;
+document.getElementById("playerName").innerText="Responder: "+member;
+document.getElementById("questionText").innerText=
+"x"+multiplier+" - "+questions[currentQuestion].question;
+
+let div=document.getElementById("answers");
+div.innerHTML="";
+
+questions[currentQuestion].options.forEach(o=>{
+let b=document.createElement("button");
+b.innerText=o;
+b.onclick=()=>checkAnswer(o);
+div.appendChild(b);
+});
+
+startTimer(questions[currentQuestion].time);
+
+document.getElementById("questionScreen").classList.remove("hidden");
 }
 
 function checkAnswer(ans){
-  clearInterval(timerInterval);
+clearInterval(timerInterval);
 
-  if(ans===questions[current].correct){
-    playSound("correct");
-    enableBallDrop();
-  }else{
-    playSound("wrong");
-    nextTurn();
-  }
+if(ans===questions[currentQuestion].correct){
+showBoardScreen();
+}else{
+document.getElementById("wrongScreen").classList.remove("hidden");
+}
 }
 
-function startTimer(sec){
-  let t=sec;
-  document.getElementById("timer").innerText="Time: "+t;
-
-  timerInterval=setInterval(()=>{
-    t--;
-    document.getElementById("timer").innerText="Time: "+t;
-    if(t<=0){
-      clearInterval(timerInterval);
-      nextTurn();
-    }
-  },1000);
+function nextRound(){
+nextTurn();
+showQuestionScreen();
 }
 
-/* ---------------- BALL DROP ---------------- */
-
-function enableBallDrop(){
-  ballReady=true;
-  document.getElementById("question").innerText+="  🎯 CLICK TOP TO DROP";
-}
-
-document.addEventListener("click",function(e){
-
-  if(!ballReady) return;
-  if(e.clientY > window.innerHeight*0.25) return;
-
-  ballReady=false;
-
-  let ball=Bodies.circle(e.clientX,20,12,{
-    restitution:0.7,
-    render:{fillStyle:"#f0f"}
-  });
-
-  Composite.add(world,ball);
-  playSound("drop");
-
-  Events.on(engine,"afterUpdate",function(){
-    if(ball.position.y>window.innerHeight-100){
-      calculateScore(ball.position.x);
-      Composite.remove(world,ball);
-    }
-  });
-});
-
-function calculateScore(x){
-  let slot=Math.floor(x/slotWidth);
-  if(slot<0)slot=0;
-  if(slot>=slotValues.length)slot=slotValues.length-1;
-
-  let total=slotValues[slot]*multiplier;
-  teams[currentTeam].score+=total;
-
-  updateScoreboard();
-  nextTurn();
-}
-
-/* ---------------- TURN / END ---------------- */
+/* ---------- TURN LOGIC ---------- */
 
 function nextTurn(){
-  currentTeam=(currentTeam+1)%teams.length;
-  showQuestion();
+currentGroupIndex=(currentGroupIndex+1)%groups.length;
+currentQuestion++;
+if(currentQuestion>=questions.length){
+alert("Fim do jogo!");
+exitFullscreen();
+location.reload();
+}
 }
 
-function nextQuestion(){
-  current++;
-  if(current<questions.length){
-    showQuestion();
-  }else{
-    showRanking();
-  }
+/* ---------- MEMBER DRAW ---------- */
+
+function drawMember(group){
+
+let available=group.members.filter(m=>{
+return !group.draws[m]||group.draws[m]<2;
+});
+
+if(!available.length){
+group.draws={};
+available=group.members;
 }
 
-function showRanking(){
-  let ranking=document.getElementById("ranking");
-  ranking.style.display="flex";
-
-  teams.sort((a,b)=>b.score-a.score);
-
-  ranking.innerHTML="<h1>FINAL RANKING</h1>";
-
-  teams.forEach((t,i)=>{
-    ranking.innerHTML+=
-      "<div>"+(i+1)+"º - "+t.name+" : "+t.score+"</div>";
-  });
+let chosen=available[Math.floor(Math.random()*available.length)];
+group.draws[chosen]=(group.draws[chosen]||0)+1;
+return chosen;
 }
 
-/* ---------------- UI ---------------- */
+/* ---------- TIMER ---------- */
 
-function updateScoreboard(){
-  let sb=document.getElementById("scoreboard");
-  sb.innerHTML="";
-  teams.forEach(t=>{
-    sb.innerHTML+=
-      `<div class="team">${t.name}<br>${t.score}</div>`;
-  });
+function startTimer(sec){
+let t=sec;
+document.getElementById("timer").innerText="Tempo: "+t;
+timerInterval=setInterval(()=>{
+t--;
+document.getElementById("timer").innerText="Tempo: "+t;
+if(t<=0){
+clearInterval(timerInterval);
+document.getElementById("wrongScreen").classList.remove("hidden");
+}
+},1000);
+}
+
+/* ---------- BOARD ---------- */
+
+function showBoardScreen(){
+hideAll();
+document.getElementById("boardScreen").classList.remove("hidden");
+initBoard();
+}
+
+function initBoard(){
+engine=Engine.create();
+world=engine.world;
+
+render=Render.create({
+element:document.getElementById("boardScreen"),
+engine:engine,
+options:{
+width:window.innerWidth,
+height:window.innerHeight,
+wireframes:false,
+background:"black"
+}
+});
+
+Render.run(render);
+runner=Runner.create();
+Runner.run(runner,engine);
+
+slotWidth=window.innerWidth/slotValues.length;
+
+for(let y=window.innerHeight*0.2;y<window.innerHeight*0.8;y+=70){
+for(let x=80;x<window.innerWidth-80;x+=60){
+Composite.add(world,Bodies.circle(x,y,8,{isStatic:true,render:{fillStyle:"#0ff"}}));
+}
+}
+
+for(let i=0;i<slotValues.length;i++){
+Composite.add(world,Bodies.rectangle(i*slotWidth,window.innerHeight-80,10,160,{isStatic:true,render:{fillStyle:"#0ff"}}));
+}
+
+Composite.add(world,Bodies.rectangle(window.innerWidth/2,window.innerHeight-20,window.innerWidth,40,{isStatic:true}));
+
+document.addEventListener("click",dropBallOnce,{once:true});
+}
+
+function dropBallOnce(e){
+if(e.clientY>window.innerHeight*0.25)return;
+
+let ball=Bodies.circle(e.clientX,20,12,{restitution:0.7,render:{fillStyle:"#f0f"}});
+Composite.add(world,ball);
+
+Events.on(engine,"afterUpdate",function(){
+if(ball.position.y>window.innerHeight-100){
+let slot=Math.floor(ball.position.x/slotWidth);
+slot=Math.max(0,Math.min(slot,slotValues.length-1));
+let total=slotValues[slot]*multiplier;
+alert("Pontuação: "+total);
+Composite.remove(world,ball);
+nextTurn();
+showQuestionScreen();
+}
+});
+}
+
+/* ---------- UTIL ---------- */
+
+function hideAll(){
+document.querySelectorAll(".screen").forEach(s=>s.classList.add("hidden"));
 }
 
 function shuffle(a){
-  return a.sort(()=>Math.random()-0.5);
-}
-
-/* ---------------- SOUND ---------------- */
-
-function playSound(type){
-  let audio=new Audio();
-  if(type==="correct")
-    audio.src="https://assets.mixkit.co/sfx/preview/mixkit-game-show-correct-answer-829.mp3";
-  if(type==="wrong")
-    audio.src="https://assets.mixkit.co/sfx/preview/mixkit-wrong-answer-buzz-950.mp3";
-  if(type==="drop")
-    audio.src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.mp3";
-  audio.play();
+return a.sort(()=>Math.random()-0.5);
 }
 </script>
 
