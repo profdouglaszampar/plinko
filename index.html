@@ -2,16 +2,18 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Plink-Oh Neon Pro</title>
+<title>PLINK-OH NEON PRO</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
 
 <style>
-body{
+html, body{
   margin:0;
+  padding:0;
+  overflow:hidden;
   background:black;
+  font-family:Arial, sans-serif;
   color:#0ff;
-  font-family:Arial;
   text-align:center;
 }
 
@@ -19,29 +21,39 @@ h1{
   text-shadow:0 0 20px #0ff;
 }
 
+#ui{
+  position:absolute;
+  top:10px;
+  width:100%;
+  z-index:10;
+}
+
 button{
   background:black;
   color:#0ff;
   border:2px solid #0ff;
-  padding:10px 20px;
+  padding:8px 18px;
   margin:5px;
-  font-size:18px;
+  font-size:16px;
   cursor:pointer;
   box-shadow:0 0 10px #0ff;
 }
 
-#game{display:none;}
-#timer{font-size:24px; margin:10px;}
-#scoreboard{margin-top:10px;}
+#answers button{
+  display:block;
+  margin:8px auto;
+}
+
 .team{
   display:inline-block;
-  margin:10px;
-  padding:10px;
+  margin:5px;
+  padding:8px;
   border:2px solid #0ff;
-  box-shadow:0 0 15px #0ff;
+  box-shadow:0 0 10px #0ff;
 }
+
 #ranking{
-  position:fixed;
+  position:absolute;
   top:0;
   left:0;
   width:100%;
@@ -51,69 +63,82 @@ button{
   justify-content:center;
   align-items:center;
   flex-direction:column;
-  font-size:30px;
-}
-canvas{
-  border-top:2px solid #0ff;
+  font-size:28px;
+  z-index:20;
 }
 </style>
 </head>
 
 <body>
 
-<h1>PLINK-OH NEON</h1>
+<div id="ui">
+  <h1>PLINK-OH NEON</h1>
 
-<div id="setup">
-<label>Teams:</label>
-<input type="number" id="teamCount" value="2" min="1" max="8"><br><br>
-<input type="file" id="fileInput" accept=".csv">
-</div>
+  <div id="setup">
+    Teams:
+    <input type="number" id="teamCount" value="2" min="1" max="8">
+    <br><br>
+    <input type="file" id="fileInput" accept=".csv">
+  </div>
 
-<div id="game">
-<h2 id="question"></h2>
-<div id="timer"></div>
-<div id="answers"></div>
-<div id="scoreboard"></div>
-<button onclick="nextQuestion()">Next</button>
+  <div id="game" style="display:none;">
+    <h2 id="question"></h2>
+    <div id="timer"></div>
+    <div id="answers"></div>
+    <div id="scoreboard"></div>
+    <button onclick="nextQuestion()">Next Question</button>
+  </div>
 </div>
 
 <div id="ranking"></div>
 
 <script>
-
 const {Engine, Render, Runner, Bodies, Composite, Events} = Matter;
 
-let engine = Engine.create();
-let world = engine.world;
-
-let render = Render.create({
-  element: document.body,
-  engine: engine,
-  options: {
-    width: 600,
-    height: 700,
-    wireframes: false,
-    background: "black"
-  }
-});
-
-Render.run(render);
-Runner.run(Runner.create(), engine);
-
+let engine, world, render, runner;
 let slotValues=[100,200,300,500,300,200,100];
-let slotWidth=600/slotValues.length;
+let slotWidth;
 
 let questions=[], current=0;
 let teams=[], currentTeam=0;
 let multiplier=1;
 let timerInterval;
+let ballReady=false;
 
-/* ---------- BOARD ---------- */
+/* ---------------- INIT ---------------- */
+
+function initEngine(){
+  engine=Engine.create();
+  world=engine.world;
+
+  render=Render.create({
+    element:document.body,
+    engine:engine,
+    options:{
+      width:window.innerWidth,
+      height:window.innerHeight,
+      wireframes:false,
+      background:"black"
+    }
+  });
+
+  Render.run(render);
+  runner=Runner.create();
+  Runner.run(runner,engine);
+
+  slotWidth=window.innerWidth/slotValues.length;
+  createBoard();
+}
 
 function createBoard(){
+  Composite.clear(world);
 
-  for(let y=100;y<600;y+=70){
-    for(let x=80;x<520;x+=60){
+  let w=window.innerWidth;
+  let h=window.innerHeight;
+
+  // Pegs
+  for(let y=h*0.2;y<h*0.8;y+=70){
+    for(let x=80;x<w-80;x+=60){
       let peg=Bodies.circle(x,y,8,{
         isStatic:true,
         render:{fillStyle:"#0ff"}
@@ -122,24 +147,29 @@ function createBoard(){
     }
   }
 
+  // Slot walls
   for(let i=0;i<slotValues.length;i++){
-    let wall=Bodies.rectangle(i*slotWidth,650,10,100,{
+    let wall=Bodies.rectangle(i*slotWidth,h-80,10,160,{
       isStatic:true,
       render:{fillStyle:"#0ff"}
     });
     Composite.add(world,wall);
   }
 
-  let ground=Bodies.rectangle(300,690,600,20,{
+  // Ground
+  let ground=Bodies.rectangle(w/2,h-20,w,40,{
     isStatic:true,
     render:{fillStyle:"#0ff"}
   });
+
   Composite.add(world,ground);
 }
 
-createBoard();
+window.addEventListener("resize",()=>location.reload());
 
-/* ---------- GAME SETUP ---------- */
+initEngine();
+
+/* ---------------- FILE LOAD ---------------- */
 
 document.getElementById("fileInput").addEventListener("change",function(e){
 
@@ -156,6 +186,7 @@ document.getElementById("fileInput").addEventListener("change",function(e){
 
   reader.onload=function(ev){
     let lines=ev.target.result.trim().split("\n");
+
     questions=lines.map(l=>{
       let p=l.split(",");
       return{
@@ -169,14 +200,15 @@ document.getElementById("fileInput").addEventListener("change",function(e){
 
     document.getElementById("setup").style.display="none";
     document.getElementById("game").style.display="block";
+
     updateScoreboard();
     showQuestion();
-  }
+  };
 
   reader.readAsText(file);
 });
 
-/* ---------- QUESTION ---------- */
+/* ---------------- QUESTIONS ---------------- */
 
 function showQuestion(){
   let q=questions[current];
@@ -224,33 +256,35 @@ function startTimer(sec){
   },1000);
 }
 
-/* ---------- BALL DROP ---------- */
+/* ---------------- BALL DROP ---------------- */
 
 function enableBallDrop(){
-  document.addEventListener("click",dropBallOnce,{once:true});
+  ballReady=true;
+  document.getElementById("question").innerText+="  🎯 CLICK TOP TO DROP";
 }
 
-function dropBallOnce(e){
-  let x=e.clientX;
-  let ball=Bodies.circle(x,20,12,{
-    restitution:0.6,
+document.addEventListener("click",function(e){
+
+  if(!ballReady) return;
+  if(e.clientY > window.innerHeight*0.25) return;
+
+  ballReady=false;
+
+  let ball=Bodies.circle(e.clientX,20,12,{
+    restitution:0.7,
     render:{fillStyle:"#f0f"}
   });
 
   Composite.add(world,ball);
   playSound("drop");
 
-  Events.on(engine,"collisionStart",function(event){
-    event.pairs.forEach(pair=>{
-      if(pair.bodyA===ball || pair.bodyB===ball){
-        if(ball.position.y>630){
-          calculateScore(ball.position.x);
-          Composite.remove(world,ball);
-        }
-      }
-    });
+  Events.on(engine,"afterUpdate",function(){
+    if(ball.position.y>window.innerHeight-100){
+      calculateScore(ball.position.x);
+      Composite.remove(world,ball);
+    }
   });
-}
+});
 
 function calculateScore(x){
   let slot=Math.floor(x/slotWidth);
@@ -264,7 +298,7 @@ function calculateScore(x){
   nextTurn();
 }
 
-/* ---------- TURN / END ---------- */
+/* ---------------- TURN / END ---------------- */
 
 function nextTurn(){
   currentTeam=(currentTeam+1)%teams.length;
@@ -280,8 +314,6 @@ function nextQuestion(){
   }
 }
 
-/* ---------- RANKING ---------- */
-
 function showRanking(){
   let ranking=document.getElementById("ranking");
   ranking.style.display="flex";
@@ -289,15 +321,14 @@ function showRanking(){
   teams.sort((a,b)=>b.score-a.score);
 
   ranking.innerHTML="<h1>FINAL RANKING</h1>";
+
   teams.forEach((t,i)=>{
     ranking.innerHTML+=
       "<div>"+(i+1)+"º - "+t.name+" : "+t.score+"</div>";
   });
-
-  ranking.style.animation="fadein 2s";
 }
 
-/* ---------- UI ---------- */
+/* ---------------- UI ---------------- */
 
 function updateScoreboard(){
   let sb=document.getElementById("scoreboard");
@@ -312,7 +343,7 @@ function shuffle(a){
   return a.sort(()=>Math.random()-0.5);
 }
 
-/* ---------- SOUND ---------- */
+/* ---------------- SOUND ---------------- */
 
 function playSound(type){
   let audio=new Audio();
@@ -324,7 +355,7 @@ function playSound(type){
     audio.src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.mp3";
   audio.play();
 }
-
 </script>
+
 </body>
 </html>
