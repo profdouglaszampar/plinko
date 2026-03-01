@@ -3,231 +3,214 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Plinko ∞ Universo Paralelo</title>
+<title>Plinko ∞</title>
 
 <style>
-body {
-    margin: 0;
-    background: radial-gradient(circle at center, #eef2f7, #dde3ec);
-    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    overflow: hidden;
+body{
+    margin:0;
+    background:radial-gradient(circle,#eef2f7,#dde3ec);
+    font-family:sans-serif;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
 }
-
-.container {
-    text-align: center;
+.container{text-align:center;}
+h1{font-weight:300;letter-spacing:3px;}
+canvas{
+    background:rgba(255,255,255,0.7);
+    border-radius:20px;
+    box-shadow:0 30px 60px rgba(0,0,0,0.08);
 }
-
-h1 {
-    font-weight: 300;
-    letter-spacing: 4px;
-    color: #1a1a1a;
-}
-
-canvas {
-    background: rgba(255,255,255,0.6);
-    backdrop-filter: blur(8px);
-    border-radius: 24px;
-    box-shadow: 0 40px 80px rgba(0,0,0,0.08);
-}
-
-button {
-    margin-top: 20px;
-    padding: 12px 40px;
-    border-radius: 40px;
-    border: 1px solid #ddd;
-    background: white;
-    cursor: pointer;
-    font-size: 15px;
+button{
+    margin-top:15px;
+    padding:10px 30px;
+    border-radius:30px;
+    border:1px solid #ccc;
+    background:white;
+    cursor:pointer;
 }
 </style>
 </head>
 
 <body>
 <div class="container">
-    <h1>PLINKO ∞</h1>
-    <canvas id="board" width="420" height="600"></canvas>
-    <br>
-    <button onclick="startUniverse()">Abrir Portal</button>
+<h1>PLINKO ∞</h1>
+<canvas id="c" width="420" height="600"></canvas>
+<br>
+<button onclick="spawn()">Abrir Portal</button>
 </div>
 
 <script>
-const canvas = document.getElementById("board");
+const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-const gravity = 0.06;
-const damping = 0.94;
+const gravity = 0.05;
+const damping = 0.92;
 const pegRadius = 5;
-const ballRadius = 9;
-const rows = 9;
+const ballRadius = 10;
+const rows = 8;
 
 let pegs = [];
-let ball = null;
 let particles = [];
+let ball = null;
 let trail = [];
-let audioStarted = false;
 
-// 🎵 Som ambiente etéreo
-function startAudio() {
-    if (audioStarted) return;
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    oscillator.type = "sine";
-    oscillator.frequency.value = 110; // grave suave
-    gain.gain.value = 0.03;
-
-    oscillator.connect(gain);
-    gain.connect(audioCtx.destination);
-    oscillator.start();
-
-    audioStarted = true;
-}
-
-// Criar pinos
-for (let row = 0; row < rows; row++) {
-    let cols = row + 3;
-    let spacing = canvas.width / (cols + 1);
-
-    for (let col = 0; col < cols; col++) {
+/* ---------- CRIAR PINOS ---------- */
+for(let r=0;r<rows;r++){
+    let cols=r+3;
+    let space=canvas.width/(cols+1);
+    for(let c=0;c<cols;c++){
         pegs.push({
-            x: spacing * (col + 1),
-            y: 100 + row * 50
+            x:space*(c+1),
+            y:100+r*55
         });
     }
 }
 
-// 🌫 Partículas
-for (let i = 0; i < 40; i++) {
+/* ---------- PARTÍCULAS ---------- */
+for(let i=0;i<35;i++){
     particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        size: Math.random() * 2 + 1,
-        speed: Math.random() * 0.3 + 0.1
+        x:Math.random()*canvas.width,
+        y:Math.random()*canvas.height,
+        size:Math.random()*2+1,
+        speed:Math.random()*0.3+0.1
     });
 }
 
-function drawParticles() {
-    particles.forEach(p => {
-        p.y -= p.speed;
-        if (p.y < 0) p.y = canvas.height;
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-        ctx.fillStyle = "rgba(180,190,210,0.3)";
-        ctx.fill();
-    });
+/* ---------- SOM ---------- */
+let audioStarted=false;
+function startAudio(){
+    if(audioStarted) return;
+    const ctxA=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctxA.createOscillator();
+    const gain=ctxA.createGain();
+    osc.type="sine";
+    osc.frequency.value=120;
+    gain.gain.value=0.03;
+    osc.connect(gain);
+    gain.connect(ctxA.destination);
+    osc.start();
+    audioStarted=true;
 }
 
-function drawPegs() {
-    pegs.forEach(p => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, pegRadius, 0, Math.PI*2);
-        ctx.fillStyle = "rgba(120,130,150,0.4)";
-        ctx.fill();
-    });
-}
-
-// 🌌 Rastro quântico
-function drawTrail() {
-    trail.forEach((t, i) => {
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, ballRadius * (i/trail.length), 0, Math.PI*2);
-        ctx.fillStyle = `rgba(100,120,255,${i/trail.length * 0.3})`;
-        ctx.fill();
-    });
-}
-
-function drawBall() {
-    if (!ball) return;
-
-    let hue = 200 + (ball.y / canvas.height) * 100; // ✨ muda cor conforme desce
-
-    ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI*2);
-    ctx.fillStyle = `hsl(${hue}, 70%, 55%)`;
-    ctx.shadowColor = `hsl(${hue}, 70%, 70%)`;
-    ctx.shadowBlur = 20;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-}
-
-function startUniverse() {
+/* ---------- BOLINHA ---------- */
+function spawn(){
     startAudio();
+    if(ball) return;
 
-    if (ball) return;
-
-    ball = {
-        x: canvas.width / 2,
-        y: 40,
-        vx: (Math.random() - 0.5) * 0.6,
-        vy: 0
+    ball={
+        x:canvas.width/2,
+        y:40,
+        vx:(Math.random()-0.5)*0.5,
+        vy:0
     };
-
-    trail = [];
-    animate();
+    trail=[];
 }
 
-function updateBall() {
-    if (!ball) return;
+/* ---------- UPDATE ---------- */
+function update(){
+    if(!ball) return;
 
-    ball.vy += gravity;
-    ball.vx += (Math.random() - 0.5) * 0.01;
+    ball.vy+=gravity;
+    ball.vx+=(Math.random()-0.5)*0.01;
 
-    ball.x += ball.vx;
-    ball.y += ball.vy;
+    ball.x+=ball.vx;
+    ball.y+=ball.vy;
 
-    if (ball.x < ballRadius || ball.x > canvas.width - ballRadius) {
-        ball.vx *= -damping;
+    /* paredes */
+    if(ball.x<ballRadius){
+        ball.x=ballRadius;
+        ball.vx*=-damping;
+    }
+    if(ball.x>canvas.width-ballRadius){
+        ball.x=canvas.width-ballRadius;
+        ball.vx*=-damping;
     }
 
-    pegs.forEach(p => {
-        let dx = ball.x - p.x;
-        let dy = ball.y - p.y;
-        let dist = Math.sqrt(dx*dx + dy*dy);
+    /* colisão pinos */
+    pegs.forEach(p=>{
+        let dx=ball.x-p.x;
+        let dy=ball.y-p.y;
+        let dist=Math.sqrt(dx*dx+dy*dy);
+        let minDist=ballRadius+pegRadius;
 
-        if (dist < ballRadius + pegRadius) {
-            let angle = Math.atan2(dy, dx);
-            ball.x = p.x + Math.cos(angle) * (ballRadius + pegRadius);
-            ball.y = p.y + Math.sin(angle) * (ballRadius + pegRadius);
+        if(dist<minDist){
+            let angle=Math.atan2(dy,dx);
+            ball.x=p.x+Math.cos(angle)*minDist;
+            ball.y=p.y+Math.sin(angle)*minDist;
 
-            let normalX = dx / dist;
-            let normalY = dy / dist;
-            let dot = ball.vx * normalX + ball.vy * normalY;
+            let nx=dx/dist;
+            let ny=dy/dist;
+            let dot=ball.vx*nx+ball.vy*ny;
 
-            ball.vx -= 2 * dot * normalX;
-            ball.vy -= 2 * dot * normalY;
+            ball.vx-=2*dot*nx;
+            ball.vy-=2*dot*ny;
 
-            ball.vx *= damping;
-            ball.vy *= damping;
+            ball.vx*=damping;
+            ball.vy*=damping;
         }
     });
 
-    trail.push({x: ball.x, y: ball.y});
-    if (trail.length > 25) trail.shift();
+    /* rastro */
+    trail.push({x:ball.x,y:ball.y});
+    if(trail.length>20) trail.shift();
 
-    if (ball.y > canvas.height - 20) {
-        ball = null;
+    if(ball.y>canvas.height-ballRadius){
+        ball=null;
     }
 }
 
-function animate() {
+/* ---------- DESENHO ---------- */
+function draw(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    drawParticles();
-    drawPegs();
-    updateBall();
-    drawTrail();
-    drawBall();
+    /* partículas */
+    particles.forEach(p=>{
+        p.y-=p.speed;
+        if(p.y<0) p.y=canvas.height;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+        ctx.fillStyle="rgba(180,190,210,0.3)";
+        ctx.fill();
+    });
 
-    requestAnimationFrame(animate);
+    /* pinos */
+    pegs.forEach(p=>{
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,pegRadius,0,Math.PI*2);
+        ctx.fillStyle="rgba(120,130,150,0.5)";
+        ctx.fill();
+    });
+
+    /* rastro */
+    trail.forEach((t,i)=>{
+        ctx.beginPath();
+        ctx.arc(t.x,t.y,ballRadius*(i/trail.length),0,Math.PI*2);
+        ctx.fillStyle="rgba(120,150,255,"+(i/trail.length*0.3)+")";
+        ctx.fill();
+    });
+
+    /* bolinha */
+    if(ball){
+        let hue=200+(ball.y/canvas.height)*120;
+        ctx.beginPath();
+        ctx.arc(ball.x,ball.y,ballRadius,0,Math.PI*2);
+        ctx.fillStyle="hsl("+hue+",70%,55%)";
+        ctx.shadowColor="hsl("+hue+",70%,70%)";
+        ctx.shadowBlur=15;
+        ctx.fill();
+        ctx.shadowBlur=0;
+    }
 }
 
-animate();
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
 </script>
 </body>
 </html>
