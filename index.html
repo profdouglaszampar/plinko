@@ -2,40 +2,62 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Plink-Oh Educacional</title>
+<title>PLINK-OH TV SHOW</title>
 <style>
 body{
 margin:0;
 background:#000;
-color:#0ff;
 font-family:Arial;
-overflow:hidden;
-text-align:center;
-}
-
-button{
-padding:20px 40px;
-font-size:22px;
-background:#111;
 color:#0ff;
-border:2px solid #0ff;
-border-radius:10px;
-cursor:pointer;
-margin:20px;
+text-align:center;
+overflow:hidden;
 }
 
-.bigButton{
+h1{
+font-size:60px;
+text-shadow:0 0 20px #0ff;
+}
+
+.neonButton{
 display:block;
-width:400px;
-margin:30px auto;
-font-size:26px;
+width:420px;
+margin:25px auto;
+padding:25px;
+font-size:24px;
+background:#000;
+color:#0ff;
+border:3px solid #0ff;
+border-radius:15px;
+cursor:pointer;
+transition:0.3s;
+box-shadow:0 0 15px #0ff;
+}
+
+.neonButton:hover{
+background:#0ff;
+color:#000;
+box-shadow:0 0 30px #0ff;
+}
+
+.startButton{
+font-size:32px;
+border:4px solid #0ff;
+box-shadow:0 0 25px #0ff;
+animation:pulse 1.5s infinite;
+}
+
+@keyframes pulse{
+0%{box-shadow:0 0 10px #0ff;}
+50%{box-shadow:0 0 40px #0ff;}
+100%{box-shadow:0 0 10px #0ff;}
 }
 
 .hidden{display:none;}
 
-#questionBox{
-font-size:28px;
-margin-top:40px;
+#timer{
+font-size:45px;
+margin:20px;
+color:#f0f;
 }
 
 .option{
@@ -43,12 +65,6 @@ margin:15px;
 padding:15px;
 border:2px solid #0ff;
 cursor:pointer;
-}
-
-#timer{
-font-size:40px;
-color:#f0f;
-margin:20px;
 }
 
 canvas{
@@ -59,97 +75,100 @@ margin:auto;
 
 #scoreboard{
 position:absolute;
-top:10px;
-right:10px;
+top:15px;
+right:20px;
 text-align:right;
+font-size:18px;
+}
+
+#endScreen h2{
+font-size:40px;
+color:#ff0;
+text-shadow:0 0 20px #ff0;
 }
 </style>
 </head>
 <body>
 
 <div id="startScreen">
-<h1>PLINK-OH</h1>
+<h1>PLINK-OH TV SHOW</h1>
 
-<label class="bigButton">
-Importar Grupos
+<label class="neonButton">
+IMPORTAR GRUPOS
 <input type="file" id="groupFile" hidden>
 </label>
 
-<label class="bigButton">
-Importar Perguntas
+<label class="neonButton">
+IMPORTAR PERGUNTAS
 <input type="file" id="questionFile" hidden>
 </label>
 
-<button onclick="startGame()">INICIAR JOGO</button>
+<button class="neonButton startButton" onclick="startGame()">INICIAR JOGO</button>
 </div>
 
 <div id="questionScreen" class="hidden">
-<div id="currentInfo"></div>
+<div id="info"></div>
 <div id="timer"></div>
-<div id="questionBox"></div>
+<div id="question"></div>
 <div id="options"></div>
 </div>
 
 <div id="errorScreen" class="hidden">
 <h1>❌ ERROU!</h1>
-<button onclick="nextTurn()">Próximo Grupo</button>
+<button class="neonButton" onclick="nextTurn()">CONTINUAR</button>
 </div>
 
 <div id="plinkoScreen" class="hidden">
-<h2>Use ← → para mover</h2>
-<h2>↓ para soltar</h2>
-<canvas id="gameCanvas"></canvas>
+<h2>← → mover | ↓ soltar</h2>
+<canvas id="canvas"></canvas>
+</div>
+
+<div id="endScreen" class="hidden">
+<h1>🏆 FIM DE JOGO</h1>
+<div id="finalRanking"></div>
+<button class="neonButton" onclick="location.reload()">REINICIAR</button>
 </div>
 
 <div id="scoreboard"></div>
 
 <script>
 let groups=[],questions=[];
-let currentGroupIndex=0;
 let groupOrder=[];
+let currentGroupPointer=0;
+let currentRoundIndex=0;
 let currentQuestion;
-let timerInterval;
 let multiplier=1;
+let timerInterval;
 let selectedPlayer="";
-let canvas=document.getElementById("gameCanvas");
+let canvas=document.getElementById("canvas");
 let ctx=canvas.getContext("2d");
-
 let ball=null;
 let pins=[];
 let slots=[100,200,300,400,500];
 
-function resizeCanvas(){
-canvas.width=window.innerWidth;
-canvas.height=window.innerHeight;
-createPins();
-}
-window.onresize=resizeCanvas;
+function shuffle(a){return a.sort(()=>Math.random()-0.5);}
 
-function shuffle(a){
-return a.sort(()=>Math.random()-0.5);
-}
-
-document.getElementById("groupFile").addEventListener("change",function(e){
+document.getElementById("groupFile").addEventListener("change",e=>{
 let reader=new FileReader();
-reader.onload=function(ev){
+reader.onload=ev=>{
 let lines=ev.target.result.trim().split("\n").slice(1);
 groups=lines.map(l=>{
-let cols=l.split(",");
+let c=l.split(",");
 return{
-name:cols[0],
-players:cols.slice(1).filter(x=>x),
+name:c[0],
+players:c.slice(1).filter(x=>x),
 score:0,
 history:{}
 }
 });
 alert("Grupos carregados!");
-}
+};
 reader.readAsText(e.target.files[0]);
 });
 
-document.getElementById("questionFile").addEventListener("change",function(e){
+document.getElementById("questionFile").addEventListener("change",e=>{
 let reader=new FileReader();
-reader.onload=function(ev){
+reader.onload=ev=>{
 let lines=ev.target.result.trim().split("\n").slice(1);
 questions=lines.map(l=>{
 let c=l.split(",");
@@ -162,7 +181,7 @@ time:parseInt(c[6])
 }
 });
 alert("Perguntas carregadas!");
-}
+};
 reader.readAsText(e.target.files[0]);
 });
 
@@ -178,42 +197,46 @@ nextTurn();
 }
 
 function nextTurn(){
+
+if(questions.length < groups.length){
+endGame();
+return;
+}
+
 document.getElementById("errorScreen").classList.add("hidden");
 document.getElementById("plinkoScreen").classList.add("hidden");
 
-let g=groups[groupOrder[currentGroupIndex]];
-currentGroupIndex=(currentGroupIndex+1)%groups.length;
+let groupIndex=groupOrder[currentGroupPointer];
+let group=groups[groupIndex];
 
-selectedPlayer=selectPlayer(g);
+currentGroupPointer++;
+if(currentGroupPointer>=groups.length){
+currentGroupPointer=0;
+}
+
+selectedPlayer=selectPlayer(group);
 
 currentQuestion=questions.shift();
 multiplier=currentQuestion.mult;
 
-showQuestion(g,currentQuestion);
+showQuestion(group,currentQuestion);
 }
 
 function selectPlayer(group){
-let counts=group.history;
-let all=group.players;
-
-let available=all.filter(p=>(counts[p]||0)<2);
+let available=group.players.filter(p=>(group.history[p]||0)<2);
 if(available.length==0){
 group.history={};
-available=all;
+available=group.players;
 }
-
 let p=available[Math.floor(Math.random()*available.length)];
-counts[p]=(counts[p]||0)+1;
+group.history[p]=(group.history[p]||0)+1;
 return p;
 }
 
 function showQuestion(group,q){
 document.getElementById("questionScreen").classList.remove("hidden");
-document.getElementById("currentInfo").innerHTML=
-"<h2>"+group.name+" - "+selectedPlayer+"</h2>";
-
-document.getElementById("questionBox").innerText=q.question;
-
+document.getElementById("info").innerHTML="<h2>"+group.name+" - "+selectedPlayer+"</h2>";
+document.getElementById("question").innerText=q.question;
 let optDiv=document.getElementById("options");
 optDiv.innerHTML="";
 q.options.forEach(o=>{
@@ -223,7 +246,6 @@ d.innerText=o;
 d.onclick=()=>answer(o);
 optDiv.appendChild(d);
 });
-
 startTimer(q.time);
 }
 
@@ -262,26 +284,31 @@ startPlinko();
 function startPlinko(){
 document.getElementById("plinkoScreen").classList.remove("hidden");
 resizeCanvas();
-ball={x:canvas.width/2,y:50,vy:0,r:12};
-draw();
+ball={x:canvas.width/2,y:80,vy:0,r:12};
 }
+
+function resizeCanvas(){
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+createPins();
+}
+window.onresize=resizeCanvas;
 
 function createPins(){
 pins=[];
-let rows=6;
-let spacing=80;
-for(let y=150;y<150+rows*spacing;y+=spacing){
-for(let x=100;x<canvas.width-100;x+=spacing){
-pins.push({x:x+(y/spacing%2?40:0),y});
+let spacing=90;
+for(let y=150;y<600;y+=spacing){
+for(let x=120;x<canvas.width-120;x+=spacing){
+pins.push({x:x+(y/spacing%2?45:0),y});
 }
 }
 }
 
-document.addEventListener("keydown",function(e){
+document.addEventListener("keydown",e=>{
 if(!ball)return;
-if(e.key=="ArrowLeft")ball.x-=20;
-if(e.key=="ArrowRight")ball.x+=20;
-if(e.key=="ArrowDown")ball.vy=2;
+if(e.key=="ArrowLeft")ball.x-=25;
+if(e.key=="ArrowRight")ball.x+=25;
+if(e.key=="ArrowDown" && ball.vy==0)ball.vy=2;
 });
 
 function draw(){
@@ -296,12 +323,14 @@ ctx.fill();
 
 slots.forEach((s,i)=>{
 let w=canvas.width/5;
-ctx.strokeRect(i*w,canvas.height-100,w,100);
-ctx.fillText(s,i*w+w/2,canvas.height-50);
+ctx.strokeStyle="#0ff";
+ctx.strokeRect(i*w,canvas.height-120,w,120);
+ctx.fillStyle="#0ff";
+ctx.fillText(s,i*w+w/2,canvas.height-60);
 });
 
 if(ball){
-ball.vy+=0.3;
+ball.vy+=0.4;
 ball.y+=ball.vy;
 
 pins.forEach(p=>{
@@ -310,7 +339,7 @@ let dy=ball.y-p.y;
 let dist=Math.sqrt(dx*dx+dy*dy);
 if(dist<ball.r+6){
 ball.vy*=-0.7;
-ball.x+=dx>0?10:-10;
+ball.x+=dx>0?15:-15;
 }
 });
 
@@ -319,10 +348,11 @@ ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
 ctx.fillStyle="#f0f";
 ctx.fill();
 
-if(ball.y>canvas.height-100){
+if(ball.y>canvas.height-120){
 let slot=Math.floor(ball.x/(canvas.width/5));
 let points=slots[slot]*multiplier;
-groups[groupOrder[(currentGroupIndex-1+groups.length)%groups.length]].score+=points;
+let lastGroupIndex=groupOrder[(currentGroupPointer-1+groups.length)%groups.length];
+groups[lastGroupIndex].score+=points;
 updateScoreboard();
 ball=null;
 setTimeout(nextTurn,2000);
@@ -331,6 +361,7 @@ setTimeout(nextTurn,2000);
 
 requestAnimationFrame(draw);
 }
+draw();
 
 function updateScoreboard(){
 let sb=document.getElementById("scoreboard");
@@ -338,6 +369,20 @@ sb.innerHTML="<h3>PLACAR</h3>";
 groups.forEach(g=>{
 sb.innerHTML+=g.name+": "+g.score+"<br>";
 });
+}
+
+function endGame(){
+document.getElementById("plinkoScreen").classList.add("hidden");
+document.getElementById("questionScreen").classList.add("hidden");
+document.getElementById("errorScreen").classList.add("hidden");
+document.getElementById("endScreen").classList.remove("hidden");
+
+let ranking=[...groups].sort((a,b)=>b.score-a.score);
+let html="<h2>CAMPEÃO: "+ranking[0].name+"</h2><br>";
+ranking.forEach((g,i)=>{
+html+=(i+1)+"º - "+g.name+" : "+g.score+"<br>";
+});
+document.getElementById("finalRanking").innerHTML=html;
 }
 </script>
 </body>
