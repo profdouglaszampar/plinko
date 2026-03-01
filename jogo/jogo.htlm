@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plinko ∞ Estável</title>
+
+<style>
+body{
+    margin:0;
+    background:radial-gradient(circle,#eef2f7,#dde3ec);
+    font-family:sans-serif;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+.container{text-align:center;}
+canvas{
+    background:rgba(255,255,255,0.75);
+    border-radius:20px;
+    box-shadow:0 30px 60px rgba(0,0,0,0.08);
+}
+button{
+    margin-top:15px;
+    padding:10px 30px;
+    border-radius:30px;
+    border:1px solid #ccc;
+    background:white;
+    cursor:pointer;
+}
+.score{
+    margin-top:10px;
+    font-weight:300;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h2>PLINKO ∞</h2>
+<canvas id="c" width="420" height="600"></canvas>
+<br>
+<button onclick="spawn()">Abrir Portal</button>
+<div class="score" id="score">Pontuação: 0</div>
+</div>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+const gravity = 0.05;
+const damping = 0.98;
+const pegRadius = 5;
+const ballRadius = 9;
+const rows = 8;
+const slots = 6;
+
+let pegs = [];
+let ball = null;
+let trail = [];
+let particles = [];
+let scoreEl = document.getElementById("score");
+
+/* -------- PINOS -------- */
+for(let r=0;r<rows;r++){
+    let cols=r+3;
+    let space=canvas.width/(cols+1);
+    for(let c=0;c<cols;c++){
+        pegs.push({
+            x:space*(c+1),
+            y:100+r*55
+        });
+    }
+}
+
+/* -------- PARTÍCULAS -------- */
+for(let i=0;i<30;i++){
+    particles.push({
+        x:Math.random()*canvas.width,
+        y:Math.random()*canvas.height,
+        size:Math.random()*2+1,
+        speed:Math.random()*0.3+0.1
+    });
+}
+
+/* -------- SOM -------- */
+let audioStarted=false;
+function startAudio(){
+    if(audioStarted) return;
+    const ctxA=new (window.AudioContext||window.webkitAudioContext)();
+    const osc=ctxA.createOscillator();
+    const gain=ctxA.createGain();
+    osc.type="sine";
+    osc.frequency.value=110;
+    gain.gain.value=0.03;
+    osc.connect(gain);
+    gain.connect(ctxA.destination);
+    osc.start();
+    audioStarted=true;
+}
+
+/* -------- SPAWN -------- */
+function spawn(){
+    startAudio();
+    if(ball) return;
+
+    ball={
+        x:canvas.width/2,
+        y:40,
+        vx:(Math.random()-0.5)*0.6,
+        vy:0
+    };
+    trail=[];
+}
+
+/* -------- UPDATE -------- */
+function update(){
+    if(!ball) return;
+
+    ball.vy+=gravity;
+    ball.x+=ball.vx;
+    ball.y+=ball.vy;
+
+    /* paredes */
+    if(ball.x<ballRadius){
+        ball.x=ballRadius;
+        ball.vx*=-damping;
+    }
+    if(ball.x>canvas.width-ballRadius){
+        ball.x=canvas.width-ballRadius;
+        ball.vx*=-damping;
+    }
+
+    /* colisão pinos */
+    pegs.forEach(p=>{
+        let dx=ball.x-p.x;
+        let dy=ball.y-p.y;
+        let dist=Math.sqrt(dx*dx+dy*dy);
+        let minDist=ballRadius+pegRadius;
+
+        if(dist<minDist){
+            let angle=Math.atan2(dy,dx);
+            ball.x=p.x+Math.cos(angle)*minDist;
+            ball.y=p.y+Math.sin(angle)*minDist;
+
+            ball.vx+=(Math.random()-0.5)*0.4; // desvio natural
+            ball.vy*=0.9;
+        }
+    });
+
+    trail.push({x:ball.x,y:ball.y});
+    if(trail.length>20) trail.shift();
+
+    /* chegou no final */
+    if(ball.y>canvas.height-40){
+        let slotWidth=canvas.width/slots;
+        let slotIndex=Math.floor(ball.x/slotWidth);
+        let points=(slotIndex+1)*100;
+
+        scoreEl.innerText="Pontuação: "+points;
+        ball=null;
+    }
+}
+
+/* -------- DESENHO -------- */
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    /* partículas */
+    particles.forEach(p=>{
+        p.y-=p.speed;
+        if(p.y<0) p.y=canvas.height;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.size,0,Math.PI*2);
+        ctx.fillStyle="rgba(180,190,210,0.3)";
+        ctx.fill();
+    });
+
+    /* pinos */
+    pegs.forEach(p=>{
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,pegRadius,0,Math.PI*2);
+        ctx.fillStyle="rgba(120,130,150,0.5)";
+        ctx.fill();
+    });
+
+    /* divisões finais */
+    let slotWidth=canvas.width/slots;
+    for(let i=1;i<slots;i++){
+        ctx.beginPath();
+        ctx.moveTo(i*slotWidth,canvas.height-50);
+        ctx.lineTo(i*slotWidth,canvas.height);
+        ctx.strokeStyle="rgba(150,160,180,0.4)";
+        ctx.stroke();
+    }
+
+    /* rastro */
+    trail.forEach((t,i)=>{
+        ctx.beginPath();
+        ctx.arc(t.x,t.y,ballRadius*(i/trail.length),0,Math.PI*2);
+        ctx.fillStyle="rgba(120,150,255,"+(i/trail.length*0.3)+")";
+        ctx.fill();
+    });
+
+    /* bolinha */
+    if(ball){
+        let hue=200+(ball.y/canvas.height)*120;
+        ctx.beginPath();
+        ctx.arc(ball.x,ball.y,ballRadius,0,Math.PI*2);
+        ctx.fillStyle="hsl("+hue+",70%,55%)";
+        ctx.shadowColor="hsl("+hue+",70%,70%)";
+        ctx.shadowBlur=15;
+        ctx.fill();
+        ctx.shadowBlur=0;
+    }
+}
+
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
