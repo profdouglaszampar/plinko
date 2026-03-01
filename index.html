@@ -1,406 +1,233 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<title>PLINK-OH TV SHOW</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plinko ∞ Universo Paralelo</title>
+
 <style>
-body{
-margin:0;
-background:#000;
-font-family:Arial;
-color:#0ff;
-text-align:center;
-overflow:hidden;
+body {
+    margin: 0;
+    background: radial-gradient(circle at center, #eef2f7, #dde3ec);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
 }
 
-h1{
-font-size:60px;
-text-shadow:0 0 20px #0ff;
+.container {
+    text-align: center;
 }
 
-.neonButton{
-display:block;
-width:420px;
-margin:25px auto;
-padding:25px;
-font-size:24px;
-background:#000;
-color:#0ff;
-border:3px solid #0ff;
-border-radius:15px;
-cursor:pointer;
-transition:0.3s;
-box-shadow:0 0 15px #0ff;
+h1 {
+    font-weight: 300;
+    letter-spacing: 4px;
+    color: #1a1a1a;
 }
 
-.neonButton:hover{
-background:#0ff;
-color:#000;
-box-shadow:0 0 30px #0ff;
+canvas {
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(8px);
+    border-radius: 24px;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.08);
 }
 
-.startButton{
-font-size:32px;
-border:4px solid #0ff;
-box-shadow:0 0 25px #0ff;
-animation:pulse 1.5s infinite;
-}
-
-@keyframes pulse{
-0%{box-shadow:0 0 10px #0ff;}
-50%{box-shadow:0 0 40px #0ff;}
-100%{box-shadow:0 0 10px #0ff;}
-}
-
-.hidden{display:none;}
-
-#timer{
-font-size:45px;
-margin:20px;
-color:#f0f;
-}
-
-.option{
-margin:15px;
-padding:15px;
-border:2px solid #0ff;
-cursor:pointer;
-}
-
-canvas{
-background:#000;
-display:block;
-margin:auto;
-}
-
-#scoreboard{
-position:absolute;
-top:15px;
-right:20px;
-text-align:right;
-font-size:18px;
-}
-
-#endScreen h2{
-font-size:40px;
-color:#ff0;
-text-shadow:0 0 20px #ff0;
+button {
+    margin-top: 20px;
+    padding: 12px 40px;
+    border-radius: 40px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    font-size: 15px;
 }
 </style>
 </head>
+
 <body>
-
-<div id="startScreen">
-<h1>PLINK-OH TV SHOW</h1>
-
-<label class="neonButton">
-IMPORTAR GRUPOS
-<input type="file" id="groupFile" hidden>
-</label>
-
-<label class="neonButton">
-IMPORTAR PERGUNTAS
-<input type="file" id="questionFile" hidden>
-</label>
-
-<button class="neonButton startButton" onclick="startGame()">INICIAR JOGO</button>
+<div class="container">
+    <h1>PLINKO ∞</h1>
+    <canvas id="board" width="420" height="600"></canvas>
+    <br>
+    <button onclick="startUniverse()">Abrir Portal</button>
 </div>
-
-<div id="questionScreen" class="hidden">
-<div id="info"></div>
-<div id="timer"></div>
-<div id="question"></div>
-<div id="options"></div>
-</div>
-
-<div id="errorScreen" class="hidden">
-<h1>❌ ERROU!</h1>
-<button class="neonButton" onclick="nextTurn()">CONTINUAR</button>
-</div>
-
-<div id="plinkoScreen" class="hidden">
-<h2>← → mover | ↓ soltar</h2>
-<canvas id="canvas"></canvas>
-</div>
-
-<div id="endScreen" class="hidden">
-<h1>🏆 FIM DE JOGO</h1>
-<div id="finalRanking"></div>
-<button class="neonButton" onclick="location.reload()">REINICIAR</button>
-</div>
-
-<div id="scoreboard"></div>
 
 <script>
-let groups=[],questions=[];
-let groupOrder=[];
-let currentGroupPointer=0;
-let currentRoundIndex=0;
-let currentQuestion;
-let multiplier=1;
-let timerInterval;
-let selectedPlayer="";
-let canvas=document.getElementById("canvas");
-let ctx=canvas.getContext("2d");
-let ball=null;
-let pins=[];
-let slots=[100,200,300,400,500];
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
 
-function shuffle(a){return a.sort(()=>Math.random()-0.5);}
+const gravity = 0.06;
+const damping = 0.94;
+const pegRadius = 5;
+const ballRadius = 9;
+const rows = 9;
 
-document.getElementById("groupFile").addEventListener("change",e=>{
-let reader=new FileReader();
-reader.onload=ev=>{
-let lines=ev.target.result.trim().split("\n").slice(1);
-groups=lines.map(l=>{
-let c=l.split(",");
-return{
-name:c[0],
-players:c.slice(1).filter(x=>x),
-score:0,
-history:{}
-}
-});
-alert("Grupos carregados!");
-};
-reader.readAsText(e.target.files[0]);
-});
+let pegs = [];
+let ball = null;
+let particles = [];
+let trail = [];
+let audioStarted = false;
 
-document.getElementById("questionFile").addEventListener("change",e=>{
-let reader=new FileReader();
-reader.onload=ev=>{
-let lines=ev.target.result.trim().split("\n").slice(1);
-questions=lines.map(l=>{
-let c=l.split(",");
-return{
-question:c[0],
-correct:c[1],
-options:shuffle([c[1],c[2],c[3],c[4]]),
-mult:parseInt(c[5]),
-time:parseInt(c[6])
-}
-});
-alert("Perguntas carregadas!");
-};
-reader.readAsText(e.target.files[0]);
-});
+// 🎵 Som ambiente etéreo
+function startAudio() {
+    if (audioStarted) return;
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
 
-function startGame(){
-if(groups.length==0||questions.length==0){
-alert("Importe os dois arquivos!");
-return;
-}
-document.documentElement.requestFullscreen();
-groupOrder=shuffle([...groups.keys()]);
-document.getElementById("startScreen").classList.add("hidden");
-nextTurn();
+    oscillator.type = "sine";
+    oscillator.frequency.value = 110; // grave suave
+    gain.gain.value = 0.03;
+
+    oscillator.connect(gain);
+    gain.connect(audioCtx.destination);
+    oscillator.start();
+
+    audioStarted = true;
 }
 
-function nextTurn(){
+// Criar pinos
+for (let row = 0; row < rows; row++) {
+    let cols = row + 3;
+    let spacing = canvas.width / (cols + 1);
 
-if(questions.length < groups.length){
-endGame();
-return;
+    for (let col = 0; col < cols; col++) {
+        pegs.push({
+            x: spacing * (col + 1),
+            y: 100 + row * 50
+        });
+    }
 }
 
-document.getElementById("errorScreen").classList.add("hidden");
-document.getElementById("plinkoScreen").classList.add("hidden");
-
-let groupIndex=groupOrder[currentGroupPointer];
-let group=groups[groupIndex];
-
-currentGroupPointer++;
-if(currentGroupPointer>=groups.length){
-currentGroupPointer=0;
+// 🌫 Partículas
+for (let i = 0; i < 40; i++) {
+    particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        size: Math.random() * 2 + 1,
+        speed: Math.random() * 0.3 + 0.1
+    });
 }
 
-selectedPlayer=selectPlayer(group);
+function drawParticles() {
+    particles.forEach(p => {
+        p.y -= p.speed;
+        if (p.y < 0) p.y = canvas.height;
 
-currentQuestion=questions.shift();
-multiplier=currentQuestion.mult;
-
-showQuestion(group,currentQuestion);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+        ctx.fillStyle = "rgba(180,190,210,0.3)";
+        ctx.fill();
+    });
 }
 
-function selectPlayer(group){
-let available=group.players.filter(p=>(group.history[p]||0)<2);
-if(available.length==0){
-group.history={};
-available=group.players;
-}
-let p=available[Math.floor(Math.random()*available.length)];
-group.history[p]=(group.history[p]||0)+1;
-return p;
+function drawPegs() {
+    pegs.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, pegRadius, 0, Math.PI*2);
+        ctx.fillStyle = "rgba(120,130,150,0.4)";
+        ctx.fill();
+    });
 }
 
-function showQuestion(group,q){
-document.getElementById("questionScreen").classList.remove("hidden");
-document.getElementById("info").innerHTML="<h2>"+group.name+" - "+selectedPlayer+"</h2>";
-document.getElementById("question").innerText=q.question;
-let optDiv=document.getElementById("options");
-optDiv.innerHTML="";
-q.options.forEach(o=>{
-let d=document.createElement("div");
-d.className="option";
-d.innerText=o;
-d.onclick=()=>answer(o);
-optDiv.appendChild(d);
-});
-startTimer(q.time);
+// 🌌 Rastro quântico
+function drawTrail() {
+    trail.forEach((t, i) => {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, ballRadius * (i/trail.length), 0, Math.PI*2);
+        ctx.fillStyle = `rgba(100,120,255,${i/trail.length * 0.3})`;
+        ctx.fill();
+    });
 }
 
-function startTimer(t){
-let time=t;
-document.getElementById("timer").innerText=time;
-timerInterval=setInterval(()=>{
-time--;
-document.getElementById("timer").innerText=time;
-if(time<=0){
-clearInterval(timerInterval);
-wrongAnswer();
-}
-},1000);
-}
+function drawBall() {
+    if (!ball) return;
 
-function answer(opt){
-clearInterval(timerInterval);
-if(opt==currentQuestion.correct){
-correctAnswer();
-}else{
-wrongAnswer();
-}
+    let hue = 200 + (ball.y / canvas.height) * 100; // ✨ muda cor conforme desce
+
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ballRadius, 0, Math.PI*2);
+    ctx.fillStyle = `hsl(${hue}, 70%, 55%)`;
+    ctx.shadowColor = `hsl(${hue}, 70%, 70%)`;
+    ctx.shadowBlur = 20;
+    ctx.fill();
+    ctx.shadowBlur = 0;
 }
 
-function wrongAnswer(){
-document.getElementById("questionScreen").classList.add("hidden");
-document.getElementById("errorScreen").classList.remove("hidden");
+function startUniverse() {
+    startAudio();
+
+    if (ball) return;
+
+    ball = {
+        x: canvas.width / 2,
+        y: 40,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: 0
+    };
+
+    trail = [];
+    animate();
 }
 
-function correctAnswer(){
-document.getElementById("questionScreen").classList.add("hidden");
-startPlinko();
+function updateBall() {
+    if (!ball) return;
+
+    ball.vy += gravity;
+    ball.vx += (Math.random() - 0.5) * 0.01;
+
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+
+    if (ball.x < ballRadius || ball.x > canvas.width - ballRadius) {
+        ball.vx *= -damping;
+    }
+
+    pegs.forEach(p => {
+        let dx = ball.x - p.x;
+        let dy = ball.y - p.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+
+        if (dist < ballRadius + pegRadius) {
+            let angle = Math.atan2(dy, dx);
+            ball.x = p.x + Math.cos(angle) * (ballRadius + pegRadius);
+            ball.y = p.y + Math.sin(angle) * (ballRadius + pegRadius);
+
+            let normalX = dx / dist;
+            let normalY = dy / dist;
+            let dot = ball.vx * normalX + ball.vy * normalY;
+
+            ball.vx -= 2 * dot * normalX;
+            ball.vy -= 2 * dot * normalY;
+
+            ball.vx *= damping;
+            ball.vy *= damping;
+        }
+    });
+
+    trail.push({x: ball.x, y: ball.y});
+    if (trail.length > 25) trail.shift();
+
+    if (ball.y > canvas.height - 20) {
+        ball = null;
+    }
 }
 
-function startPlinko(){
-document.getElementById("plinkoScreen").classList.remove("hidden");
-resizeCanvas();
-ball={ x:canvas.width/2, y:80, vx:(Math.random()-0.5)*4, // leve desvio inicial vy:0, r:12 };
+function animate() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    drawParticles();
+    drawPegs();
+    updateBall();
+    drawTrail();
+    drawBall();
+
+    requestAnimationFrame(animate);
 }
 
-function resizeCanvas(){
-canvas.width=window.innerWidth;
-canvas.height=window.innerHeight;
-createPins();
-}
-window.onresize=resizeCanvas;
-
-function createPins(){
-pins=[];
-let spacing=90;
-for(let y=150;y<600;y+=spacing){
-for(let x=120;x<canvas.width-120;x+=spacing){
-pins.push({x:x+(y/spacing%2?45:0),y});
-}
-}
-}
-
-document.addEventListener("keydown",e=>{
-if(!ball)return;
-if(e.key=="ArrowLeft")ball.x-=25;
-if(e.key=="ArrowRight")ball.x+=25;
-if(e.key=="ArrowDown" && ball.vy==0)ball.vy=2;
-});
-
-function draw(){
-ctx.clearRect(0,0,canvas.width,canvas.height);
-
-pins.forEach(p=>{
-ctx.beginPath();
-ctx.arc(p.x,p.y,6,0,Math.PI*2);
-ctx.fillStyle="#0ff";
-ctx.fill();
-});
-
-slots.forEach((s,i)=>{
-let w=canvas.width/5;
-ctx.strokeStyle="#0ff";
-ctx.strokeRect(i*w,canvas.height-120,w,120);
-ctx.fillStyle="#0ff";
-ctx.fillText(s,i*w+w/2,canvas.height-60);
-});
-
-if(ball){
-ball.vy+=0.35;
-
-ball.x += ball.vx || 0;
-ball.y += ball.vy;
-
-// leve atrito horizontal
-ball.vx *= 0.99;
-
-pins.forEach(p=>{
-let dx=ball.x - p.x;
-let dy = ball.y - p.y;
-let dist = Math.sqrt(dx*dx + dy*dy);
-
-if(dist < ball.r + 6){
-
-    // Normalização do vetor de colisão
-    let nx = dx / dist;
-    let ny = dy / dist;
-
-    // Reflexão realista
-    let dot = ball.vy * ny; 
-
-    ball.vy = -ball.vy * 0.8;
-
-    // Adiciona desvio lateral baseado no impacto
-    ball.vx = (ball.vx || 0) + nx * 4;
-
-}
-});
-
-ctx.beginPath();
-ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);
-ctx.fillStyle="#f0f";
-ctx.fill();
-
-if(ball.y>canvas.height-120){
-let slot=Math.floor(ball.x/(canvas.width/5));
-let points=slots[slot]*multiplier;
-let lastGroupIndex=groupOrder[(currentGroupPointer-1+groups.length)%groups.length];
-groups[lastGroupIndex].score+=points;
-updateScoreboard();
-ball=null;
-setTimeout(nextTurn,2000);
-}
-}
-
-requestAnimationFrame(draw);
-}
-draw();
-
-function updateScoreboard(){
-let sb=document.getElementById("scoreboard");
-sb.innerHTML="<h3>PLACAR</h3>";
-groups.forEach(g=>{
-sb.innerHTML+=g.name+": "+g.score+"<br>";
-});
-}
-
-function endGame(){
-document.getElementById("plinkoScreen").classList.add("hidden");
-document.getElementById("questionScreen").classList.add("hidden");
-document.getElementById("errorScreen").classList.add("hidden");
-document.getElementById("endScreen").classList.remove("hidden");
-
-let ranking=[...groups].sort((a,b)=>b.score-a.score);
-let html="<h2>CAMPEÃO: "+ranking[0].name+"</h2><br>";
-ranking.forEach((g,i)=>{
-html+=(i+1)+"º - "+g.name+" : "+g.score+"<br>";
-});
-document.getElementById("finalRanking").innerHTML=html;
-}
+animate();
 </script>
 </body>
 </html>
